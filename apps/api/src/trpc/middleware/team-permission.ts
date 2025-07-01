@@ -24,9 +24,12 @@ export const withTeamPermission = async <TReturn>(opts: {
     };
   }) => Promise<TReturn>;
 }) => {
+ try {
   const { ctx, next } = opts;
 
   const userId = ctx.session?.user?.id;
+
+  console.log("userId", userId);
 
   if (!userId) {
     throw new TRPCError({
@@ -46,6 +49,8 @@ export const withTeamPermission = async <TReturn>(opts: {
     },
     where: (users, { eq }) => eq(users.id, userId),
   });
+
+  console.log("result", result);
 
   if (!result) {
     throw new TRPCError({
@@ -84,4 +89,8 @@ export const withTeamPermission = async <TReturn>(opts: {
       db: ctx.db,
     },
   });
+ } catch (error) {
+  console.log(error);
+  throw error;
+ }
 };

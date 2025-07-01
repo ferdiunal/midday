@@ -1525,11 +1525,19 @@ export const transactionEnrichments = pgTable(
 export const users = pgTable(
   "users",
   {
-    id: uuid().primaryKey().notNull(),
+    // users.id, auth.users'a referans verir.
+    // Drizzle şemasında bunu foreignKey ile belirtmek yerine,
+    // Supabase trigger'ının bu işi yapmasına izin vermek daha doğrudur.
+    id: uuid("id")
+      .primaryKey()
+      .notNull()
+      .references(() => usersInAuth.id, { onDelete: "cascade" }),
     fullName: text("full_name"),
     avatarUrl: text("avatar_url"),
     email: text(),
-    teamId: uuid("team_id"),
+    teamId: uuid("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "string",
@@ -1545,16 +1553,8 @@ export const users = pgTable(
       "btree",
       table.teamId.asc().nullsLast().op("uuid_ops"),
     ),
-    foreignKey({
-      columns: [table.id],
-      foreignColumns: [table.id],
-      name: "users_id_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.teamId],
-      foreignColumns: [teams.id],
-      name: "users_team_id_fkey",
-    }).onDelete("set null"),
+    // KENDİ KENDİNE REFERANS VEREN HATALI FOREIGN KEY KALDIRILDI.
+    // Diğer foreign key'ler .references() ile tanımlandı.
     pgPolicy("Users can insert their own profile.", {
       as: "permissive",
       for: "insert",
@@ -1790,9 +1790,14 @@ export const documentTagAssignments = pgTable(
 export const usersOnTeam = pgTable(
   "users_on_team",
   {
-    userId: uuid("user_id").notNull(),
-    teamId: uuid("team_id").notNull(),
-    id: uuid().defaultRandom().notNull(),
+    // id sütununu tek başına primaryKey yapıyoruz. Bu en doğru yöntem.
+    id: uuid("id").defaultRandom().primaryKey().notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
     role: teamRolesEnum(),
     createdAt: timestamp("created_at", {
       withTimezone: true,
@@ -1800,6 +1805,12 @@ export const usersOnTeam = pgTable(
     }).defaultNow(),
   },
   (table) => [
+    // Bir kullanıcının bir takıma sadece bir kez üye olabilmesini sağlamak için
+    // UNIQUE kısıtlaması ekliyoruz. Bu çok önemli.
+    unique("users_on_team_user_id_team_id_unique").on(
+      table.userId,
+      table.teamId,
+    ),
     index("users_on_team_team_id_idx").using(
       "btree",
       table.teamId.asc().nullsLast().op("uuid_ops"),
@@ -1808,22 +1819,8 @@ export const usersOnTeam = pgTable(
       "btree",
       table.userId.asc().nullsLast().op("uuid_ops"),
     ),
-    foreignKey({
-      columns: [table.teamId],
-      foreignColumns: [teams.id],
-      name: "users_on_team_team_id_fkey",
-    })
-      .onUpdate("cascade")
-      .onDelete("cascade"),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-      name: "users_on_team_user_id_fkey",
-    }).onDelete("cascade"),
-    primaryKey({
-      columns: [table.userId, table.teamId, table.id],
-      name: "members_pkey",
-    }),
+    // Foreign key'ler sütun tanımlarında .references() ile yapıldığı için
+    // burada tekrar tanımlamaya gerek yok.
     pgPolicy("Enable insert for authenticated users only", {
       as: "permissive",
       for: "insert",

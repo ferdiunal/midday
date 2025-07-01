@@ -1,26 +1,49 @@
--- Current sql file was generated after introspecting the database
--- If you want to run this migration please uncomment this code before executing migrations
-/*
-CREATE TYPE "public"."account_type" AS ENUM('depository', 'credit', 'other_asset', 'loan', 'other_liability');--> statement-breakpoint
-CREATE TYPE "public"."bankProviders" AS ENUM('gocardless', 'plaid', 'teller');--> statement-breakpoint
-CREATE TYPE "public"."bank_providers" AS ENUM('gocardless', 'plaid', 'teller', 'enablebanking', 'pluggy');--> statement-breakpoint
-CREATE TYPE "public"."connection_status" AS ENUM('disconnected', 'connected', 'unknown');--> statement-breakpoint
-CREATE TYPE "public"."document_processing_status" AS ENUM('pending', 'processing', 'completed', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."inbox_account_providers" AS ENUM('gmail', 'outlook');--> statement-breakpoint
-CREATE TYPE "public"."inbox_status" AS ENUM('processing', 'pending', 'archived', 'new', 'deleted', 'done');--> statement-breakpoint
-CREATE TYPE "public"."inbox_type" AS ENUM('invoice', 'expense');--> statement-breakpoint
-CREATE TYPE "public"."invoice_delivery_type" AS ENUM('create', 'create_and_send', 'scheduled');--> statement-breakpoint
-CREATE TYPE "public"."invoice_size" AS ENUM('a4', 'letter');--> statement-breakpoint
-CREATE TYPE "public"."invoice_status" AS ENUM('draft', 'overdue', 'paid', 'unpaid', 'canceled');--> statement-breakpoint
-CREATE TYPE "public"."plans" AS ENUM('trial', 'starter', 'pro');--> statement-breakpoint
-CREATE TYPE "public"."reportTypes" AS ENUM('profit', 'revenue', 'burn_rate', 'expense');--> statement-breakpoint
-CREATE TYPE "public"."teamRoles" AS ENUM('owner', 'member');--> statement-breakpoint
-CREATE TYPE "public"."trackerStatus" AS ENUM('in_progress', 'completed');--> statement-breakpoint
-CREATE TYPE "public"."transactionCategories" AS ENUM('travel', 'office_supplies', 'meals', 'software', 'rent', 'income', 'equipment', 'transfer', 'internet_and_telephone', 'facilities_expenses', 'activity', 'uncategorized', 'taxes', 'other', 'salary', 'fees');--> statement-breakpoint
-CREATE TYPE "public"."transactionMethods" AS ENUM('payment', 'card_purchase', 'card_atm', 'transfer', 'other', 'unknown', 'ach', 'interest', 'deposit', 'wire', 'fee');--> statement-breakpoint
-CREATE TYPE "public"."transactionStatus" AS ENUM('posted', 'pending', 'excluded', 'completed', 'archived');--> statement-breakpoint
-CREATE TYPE "public"."transaction_frequency" AS ENUM('weekly', 'biweekly', 'monthly', 'semi_monthly', 'annually', 'irregular', 'unknown');--> statement-breakpoint
-CREATE TABLE "document_tag_embeddings" (
+-- Drop existing triggers and functions to ensure a clean migration
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user();
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_user_delete();
+DROP FUNCTION IF EXISTS public.update_user_profile(text, text, text, text, boolean, numeric, text);
+DROP FUNCTION IF EXISTS public.handle_updated_at();
+DROP TABLE IF EXISTS "public"."users" CASCADE;
+
+-- PostgreSQL Extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "btree_gin" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "btree_gist" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pg_jsonschema" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "hypopg" SCHEMA "extensions";
+CREATE EXTENSION IF NOT EXISTS "moddatetime" SCHEMA "extensions";
+
+-- Vector extension ekleyin eğer pgvector kullanıyorsanız
+CREATE EXTENSION IF NOT EXISTS "vector" SCHEMA "extensions";
+
+-- ENUM Types
+CREATE TYPE "public"."account_type" AS ENUM('depository', 'credit', 'other_asset', 'loan', 'other_liability');
+CREATE TYPE "public"."bankProviders" AS ENUM('gocardless', 'plaid', 'teller');
+CREATE TYPE "public"."bank_providers" AS ENUM('gocardless', 'plaid', 'teller', 'enablebanking', 'pluggy');
+CREATE TYPE "public"."connection_status" AS ENUM('disconnected', 'connected', 'unknown');
+CREATE TYPE "public"."document_processing_status" AS ENUM('pending', 'processing', 'completed', 'failed');
+CREATE TYPE "public"."inbox_account_providers" AS ENUM('gmail', 'outlook');
+CREATE TYPE "public"."inbox_status" AS ENUM('processing', 'pending', 'archived', 'new', 'deleted', 'done');
+CREATE TYPE "public"."inbox_type" AS ENUM('invoice', 'expense');
+CREATE TYPE "public"."invoice_delivery_type" AS ENUM('create', 'create_and_send', 'scheduled');
+CREATE TYPE "public"."invoice_size" AS ENUM('a4', 'letter');
+CREATE TYPE "public"."invoice_status" AS ENUM('draft', 'overdue', 'paid', 'unpaid', 'canceled');
+CREATE TYPE "public"."plans" AS ENUM('trial', 'starter', 'pro');
+CREATE TYPE "public"."reportTypes" AS ENUM('profit', 'revenue', 'burn_rate', 'expense');
+CREATE TYPE "public"."teamRoles" AS ENUM('owner', 'member');
+CREATE TYPE "public"."trackerStatus" AS ENUM('in_progress', 'completed');
+CREATE TYPE "public"."transactionCategories" AS ENUM('travel', 'office_supplies', 'meals', 'software', 'rent', 'income', 'equipment', 'transfer', 'internet_and_telephone', 'facilities_expenses', 'activity', 'uncategorized', 'taxes', 'other', 'salary', 'fees');
+CREATE TYPE "public"."transactionMethods" AS ENUM('payment', 'card_purchase', 'card_atm', 'transfer', 'other', 'unknown', 'ach', 'interest', 'deposit', 'wire', 'fee');
+CREATE TYPE "public"."transactionStatus" AS ENUM('posted', 'pending', 'excluded', 'completed', 'archived');
+CREATE TYPE "public"."transaction_frequency" AS ENUM('weekly', 'biweekly', 'monthly', 'semi_monthly', 'annually', 'irregular', 'unknown');
+
+-- Document embeddings tablosu
+CREATE TABLE IF NOT EXISTS "document_tag_embeddings" (
 	"slug" text PRIMARY KEY NOT NULL,
 	"embedding" vector(1024),
 	"name" text NOT NULL
@@ -277,7 +300,7 @@ CREATE TABLE "user_invites" (
 	"team_id" uuid,
 	"email" text,
 	"role" "teamRoles",
-	"code" text DEFAULT nanoid(24),
+	"code" uuid DEFAULT gen_random_uuid(),
 	"invited_by" uuid,
 	CONSTRAINT "unique_team_invite" UNIQUE("team_id","email"),
 	CONSTRAINT "user_invites_code_key" UNIQUE("code")
@@ -321,7 +344,7 @@ CREATE TABLE "teams" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"name" text,
 	"logo_url" text,
-	"inbox_id" text DEFAULT generate_inbox(10),
+	"inbox_id" uuid DEFAULT gen_random_uuid(),
 	"email" text,
 	"inbox_email" text,
 	"inbox_forwarding" boolean DEFAULT true,
@@ -341,7 +364,7 @@ CREATE TABLE "documents" (
 	"metadata" jsonb,
 	"path_tokens" text[],
 	"team_id" uuid,
-	"parent_id" text,
+	"parent_id" uuid,
 	"object_id" uuid,
 	"owner_id" uuid,
 	"tag" text,
@@ -424,7 +447,7 @@ CREATE TABLE "transaction_enrichments" (
 --> statement-breakpoint
 ALTER TABLE "transaction_enrichments" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "users" (
-	"id" uuid PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL references auth.users on delete cascade,
 	"full_name" text,
 	"avatar_url" text,
 	"email" text,
@@ -473,7 +496,8 @@ CREATE TABLE "inbox" (
 	"status" "inbox_status" DEFAULT 'new',
 	"website" text,
 	"display_name" text,
-	"fts" "tsvector" GENERATED ALWAYS AS (generate_inbox_fts(display_name, extract_product_names((meta -> 'products'::text)))) STORED,
+	"fts" "tsvector",
+	-- "fts" "tsvector" GENERATED ALWAYS AS (generate_inbox_fts(display_name, extract_product_names((meta -> 'products'::text)))) STORED,
 	"type" "inbox_type",
 	"description" text,
 	"base_amount" numeric,
@@ -500,7 +524,8 @@ CREATE TABLE "users_on_team" (
 	"id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"role" "teamRoles",
 	"created_at" timestamp with time zone DEFAULT now(),
-	CONSTRAINT "members_pkey" PRIMARY KEY("user_id","team_id","id")
+	CONSTRAINT "users_on_team_pkey" PRIMARY KEY("id"),
+	CONSTRAINT "users_on_team_user_id_team_id_unique" UNIQUE("user_id", "team_id")
 );
 --> statement-breakpoint
 ALTER TABLE "users_on_team" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -520,6 +545,19 @@ CREATE TABLE "transaction_categories" (
 );
 --> statement-breakpoint
 ALTER TABLE "transaction_categories" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+-- RLS Function: Authenticated user'ın teamlerini getiren fonksiyon
+CREATE OR REPLACE FUNCTION get_teams_for_authenticated_user()
+RETURNS SETOF uuid
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+    SELECT team_id
+    FROM users_on_team
+    WHERE user_id = auth.uid();
+$$;
+--> statement-breakpoint
 ALTER TABLE "transactions" ADD CONSTRAINT "public_transactions_assigned_id_fkey" FOREIGN KEY ("assigned_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transactions" ADD CONSTRAINT "public_transactions_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transactions" ADD CONSTRAINT "transactions_bank_account_id_fkey" FOREIGN KEY ("bank_account_id") REFERENCES "public"."bank_accounts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -563,7 +601,6 @@ ALTER TABLE "apps" ADD CONSTRAINT "integrations_team_id_fkey" FOREIGN KEY ("team
 ALTER TABLE "invoice_templates" ADD CONSTRAINT "invoice_settings_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transaction_enrichments" ADD CONSTRAINT "transaction_enrichments_category_slug_team_id_fkey" FOREIGN KEY ("team_id","category_slug") REFERENCES "public"."transaction_categories"("team_id","slug") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transaction_enrichments" ADD CONSTRAINT "transaction_enrichments_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "users" ADD CONSTRAINT "users_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "users" ADD CONSTRAINT "users_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tracker_projects" ADD CONSTRAINT "tracker_projects_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tracker_projects" ADD CONSTRAINT "tracker_projects_team_id_fkey" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -583,13 +620,13 @@ CREATE INDEX "idx_transactions_fts_vector" ON "transactions" USING gin ("fts_vec
 CREATE INDEX "idx_transactions_id" ON "transactions" USING btree ("id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "idx_transactions_name" ON "transactions" USING btree ("name" text_ops);--> statement-breakpoint
 CREATE INDEX "idx_transactions_name_trigram" ON "transactions" USING gin ("name" gin_trgm_ops);--> statement-breakpoint
-CREATE INDEX "idx_transactions_team_id_date_name" ON "transactions" USING btree ("team_id" date_ops,"date" date_ops,"name" uuid_ops);--> statement-breakpoint
-CREATE INDEX "idx_transactions_team_id_name" ON "transactions" USING btree ("team_id" uuid_ops,"name" uuid_ops);--> statement-breakpoint
+CREATE INDEX "idx_transactions_team_id_date_name" ON "transactions" USING btree ("team_id" uuid_ops,"date" date_ops,"name" text_ops);--> statement-breakpoint
+CREATE INDEX "idx_transactions_team_id_name" ON "transactions" USING btree ("team_id" uuid_ops,"name" text_ops);--> statement-breakpoint
 CREATE INDEX "idx_trgm_name" ON "transactions" USING gist ("name" gist_trgm_ops);--> statement-breakpoint
 CREATE INDEX "transactions_assigned_id_idx" ON "transactions" USING btree ("assigned_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "transactions_bank_account_id_idx" ON "transactions" USING btree ("bank_account_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "transactions_category_slug_idx" ON "transactions" USING btree ("category_slug" text_ops);--> statement-breakpoint
-CREATE INDEX "transactions_team_id_date_currency_bank_account_id_category_idx" ON "transactions" USING btree ("team_id" enum_ops,"date" date_ops,"currency" text_ops,"bank_account_id" date_ops,"category" date_ops);--> statement-breakpoint
+CREATE INDEX "transactions_team_id_date_currency_bank_account_id_category_idx" ON "transactions" USING btree ("team_id" uuid_ops,"date" date_ops,"currency" text_ops,"bank_account_id" uuid_ops,"category");--> statement-breakpoint
 CREATE INDEX "transactions_team_id_idx" ON "transactions" USING btree ("team_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "tracker_entries_team_id_idx" ON "tracker_entries" USING btree ("team_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "bank_accounts_bank_connection_id_idx" ON "bank_accounts" USING btree ("bank_connection_id" uuid_ops);--> statement-breakpoint
@@ -614,7 +651,7 @@ CREATE INDEX "transaction_attachments_team_id_idx" ON "transaction_attachments" 
 CREATE INDEX "transaction_attachments_transaction_id_idx" ON "transaction_attachments" USING btree ("transaction_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "documents_name_idx" ON "documents" USING btree ("name" text_ops);--> statement-breakpoint
 CREATE INDEX "documents_team_id_idx" ON "documents" USING btree ("team_id" uuid_ops);--> statement-breakpoint
-CREATE INDEX "documents_team_id_parent_id_idx" ON "documents" USING btree ("team_id" text_ops,"parent_id" text_ops);--> statement-breakpoint
+CREATE INDEX "documents_team_id_parent_id_idx" ON "documents" USING btree ("team_id" uuid_ops,"parent_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "idx_documents_fts_english" ON "documents" USING gin ("fts_english" tsvector_ops);--> statement-breakpoint
 CREATE INDEX "idx_documents_fts_language" ON "documents" USING gin ("fts_language" tsvector_ops);--> statement-breakpoint
 CREATE INDEX "idx_documents_fts_simple" ON "documents" USING gin ("fts_simple" tsvector_ops);--> statement-breakpoint
@@ -634,33 +671,33 @@ CREATE INDEX "users_on_team_user_id_idx" ON "users_on_team" USING btree ("user_i
 CREATE INDEX "transaction_categories_team_id_idx" ON "transaction_categories" USING btree ("team_id" uuid_ops);--> statement-breakpoint
 CREATE MATERIALIZED VIEW "public"."team_limits_metrics" AS (SELECT t.id AS team_id, COALESCE(sum((d.metadata ->> 'size'::text)::bigint), 0::numeric) AS total_document_size, count(DISTINCT u.id) AS number_of_users, count(DISTINCT bc.id) AS number_of_bank_connections, count(DISTINCT i.id) FILTER (WHERE date_trunc('month'::text, i.created_at) = date_trunc('month'::text, CURRENT_DATE::timestamp with time zone)) AS invoices_created_this_month, count(DISTINCT inbox.id) FILTER (WHERE date_trunc('month'::text, inbox.created_at) = date_trunc('month'::text, CURRENT_DATE::timestamp with time zone)) AS inbox_created_this_month FROM teams t LEFT JOIN documents d ON d.team_id = t.id LEFT JOIN users u ON u.team_id = t.id LEFT JOIN bank_connections bc ON bc.team_id = t.id LEFT JOIN invoices i ON i.team_id = t.id LEFT JOIN inbox ON inbox.team_id = t.id GROUP BY t.id);--> statement-breakpoint
 CREATE POLICY "Enable insert for authenticated users only" ON "document_tag_embeddings" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (true);--> statement-breakpoint
-CREATE POLICY "Transactions can be created by a member of the team" ON "transactions" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Transactions can be created by a member of the team" ON "transactions" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Transactions can be deleted by a member of the team" ON "transactions" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Transactions can be selected by a member of the team" ON "transactions" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Transactions can be updated by a member of the team" ON "transactions" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Entries can be created by a member of the team" ON "tracker_entries" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Entries can be created by a member of the team" ON "tracker_entries" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Entries can be deleted by a member of the team" ON "tracker_entries" AS PERMISSIVE FOR DELETE TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Entries can be selected by a member of the team" ON "tracker_entries" AS PERMISSIVE FOR SELECT TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Entries can be updated by a member of the team" ON "tracker_entries" AS PERMISSIVE FOR UPDATE TO "authenticated";--> statement-breakpoint
-CREATE POLICY "Tags can be handled by a member of the team" ON "customer_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Inbox accounts can be deleted by a member of the team" ON "inbox_accounts" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Tags can be handled by a member of the team" ON "customer_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Inbox accounts can be deleted by a member of the team" ON "inbox_accounts" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Inbox accounts can be selected by a member of the team" ON "inbox_accounts" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Inbox accounts can be updated by a member of the team" ON "inbox_accounts" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Bank Accounts can be created by a member of the team" ON "bank_accounts" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Bank Accounts can be created by a member of the team" ON "bank_accounts" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Bank Accounts can be deleted by a member of the team" ON "bank_accounts" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Bank Accounts can be selected by a member of the team" ON "bank_accounts" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Bank Accounts can be updated by a member of the team" ON "bank_accounts" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Invoices can be handled by a member of the team" ON "invoices" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Customers can be handled by members of the team" ON "customers" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Invoices can be handled by a member of the team" ON "invoices" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Customers can be handled by members of the team" ON "customers" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Enable read access for authenticated users" ON "exchange_rates" AS PERMISSIVE FOR SELECT TO public USING (true);--> statement-breakpoint
-CREATE POLICY "Tags can be handled by a member of the team" ON "tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Reports can be handled by a member of the team" ON "tracker_reports" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Tags can be handled by a member of the team" ON "tracker_project_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Reports can be created by a member of the team" ON "reports" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Tags can be handled by a member of the team" ON "tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Reports can be handled by a member of the team" ON "tracker_reports" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Tags can be handled by a member of the team" ON "tracker_project_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Reports can be created by a member of the team" ON "reports" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Reports can be deleted by a member of the team" ON "reports" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Reports can be selected by a member of the team" ON "reports" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Reports can be updated by member of team" ON "reports" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Bank Connections can be created by a member of the team" ON "bank_connections" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Bank Connections can be created by a member of the team" ON "bank_connections" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Bank Connections can be deleted by a member of the team" ON "bank_connections" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Bank Connections can be selected by a member of the team" ON "bank_connections" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Bank Connections can be updated by a member of the team" ON "bank_connections" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
@@ -670,9 +707,9 @@ CREATE POLICY "User Invites can be deleted by a member of the team" ON "user_inv
 CREATE POLICY "User Invites can be deleted by invited email" ON "user_invites" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "User Invites can be selected by a member of the team" ON "user_invites" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "User Invites can be updated by a member of the team" ON "user_invites" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Tags can be handled by a member of the team" ON "document_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Transaction Tags can be handled by a member of the team" ON "transaction_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
-CREATE POLICY "Transaction Attachments can be created by a member of the team" ON "transaction_attachments" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Tags can be handled by a member of the team" ON "document_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Transaction Tags can be handled by a member of the team" ON "transaction_tags" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Transaction Attachments can be created by a member of the team" ON "transaction_attachments" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Transaction Attachments can be deleted by a member of the team" ON "transaction_attachments" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Transaction Attachments can be selected by a member of the team" ON "transaction_attachments" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Transaction Attachments can be updated by a member of the team" ON "transaction_attachments" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
@@ -681,32 +718,122 @@ CREATE POLICY "Invited users can select team if they are invited." ON "teams" AS
 CREATE POLICY "Teams can be deleted by a member of the team" ON "teams" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
 CREATE POLICY "Teams can be selected by a member of the team" ON "teams" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Teams can be updated by a member of the team" ON "teams" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Documents can be deleted by a member of the team" ON "documents" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Documents can be deleted by a member of the team" ON "documents" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Documents can be selected by a member of the team" ON "documents" AS PERMISSIVE FOR ALL TO public;--> statement-breakpoint
 CREATE POLICY "Documents can be updated by a member of the team" ON "documents" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
 CREATE POLICY "Enable insert for authenticated users only" ON "documents" AS PERMISSIVE FOR INSERT TO "authenticated";--> statement-breakpoint
-CREATE POLICY "Apps can be deleted by a member of the team" ON "apps" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Apps can be deleted by a member of the team" ON "apps" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Apps can be inserted by a member of the team" ON "apps" AS PERMISSIVE FOR INSERT TO public;--> statement-breakpoint
 CREATE POLICY "Apps can be selected by a member of the team" ON "apps" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Apps can be updated by a member of the team" ON "apps" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Invoice templates can be handled by a member of the team" ON "invoice_templates" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Invoice templates can be handled by a member of the team" ON "invoice_templates" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Enable insert for authenticated users only" ON "transaction_enrichments" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY "Enable update for authenticated users only" ON "transaction_enrichments" AS PERMISSIVE FOR UPDATE TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Users can insert their own profile." ON "users" AS PERMISSIVE FOR INSERT TO public WITH CHECK ((auth.uid() = id));--> statement-breakpoint
 CREATE POLICY "Users can select their own profile." ON "users" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Users can select users if they are in the same team" ON "users" AS PERMISSIVE FOR SELECT TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Users can update own profile." ON "users" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Projects can be created by a member of the team" ON "tracker_projects" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Projects can be created by a member of the team" ON "tracker_projects" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Projects can be deleted by a member of the team" ON "tracker_projects" AS PERMISSIVE FOR DELETE TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Projects can be selected by a member of the team" ON "tracker_projects" AS PERMISSIVE FOR SELECT TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Projects can be updated by a member of the team" ON "tracker_projects" AS PERMISSIVE FOR UPDATE TO "authenticated";--> statement-breakpoint
-CREATE POLICY "Inbox can be deleted by a member of the team" ON "inbox" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Inbox can be deleted by a member of the team" ON "inbox" AS PERMISSIVE FOR DELETE TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Inbox can be selected by a member of the team" ON "inbox" AS PERMISSIVE FOR SELECT TO public;--> statement-breakpoint
 CREATE POLICY "Inbox can be updated by a member of the team" ON "inbox" AS PERMISSIVE FOR UPDATE TO public;--> statement-breakpoint
-CREATE POLICY "Tags can be handled by a member of the team" ON "document_tag_assignments" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
+CREATE POLICY "Tags can be handled by a member of the team" ON "document_tag_assignments" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));--> statement-breakpoint
 CREATE POLICY "Enable insert for authenticated users only" ON "users_on_team" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (true);--> statement-breakpoint
 CREATE POLICY "Enable updates for users on team" ON "users_on_team" AS PERMISSIVE FOR UPDATE TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Select for current user teams" ON "users_on_team" AS PERMISSIVE FOR SELECT TO "authenticated";--> statement-breakpoint
 CREATE POLICY "Users on team can be deleted by a member of the team" ON "users_on_team" AS PERMISSIVE FOR DELETE TO public;--> statement-breakpoint
-CREATE POLICY "Users on team can manage categories" ON "transaction_categories" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));
-*/
+CREATE POLICY "Users on team can manage categories" ON "transaction_categories" AS PERMISSIVE FOR ALL TO public USING ((team_id IN ( SELECT public.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)));
+
+
+-- Trigger Function: Yeni auth.users kaydı oluşturulduğunda users tablosuna kayıt ekle
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO "public"."users" (
+    id,
+    email,
+    full_name,
+    avatar_url,
+    locale,
+    week_starts_on_monday,
+    time_format,
+    created_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(
+      NEW.raw_user_meta_data->>'full_name',
+      NEW.raw_user_meta_data->>'name',
+      split_part(NEW.email, '@', 1)
+    ),
+    COALESCE(
+      NEW.raw_user_meta_data->>'avatar_url',
+      NEW.raw_user_meta_data->>'picture'
+    ),
+    COALESCE(NEW.raw_user_meta_data->>'locale', 'en'),
+    COALESCE((NEW.raw_user_meta_data->>'week_starts_on_monday')::boolean, false),
+    COALESCE((NEW.raw_user_meta_data->>'time_format')::numeric, 24),
+    timezone('utc'::text, now())
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger: auth.users tablosuna insert işleminden sonra çalışacak
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Updated_at otomatik güncelleme için trigger function
+CREATE OR REPLACE FUNCTION public.handle_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = timezone('utc'::text, now());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Kullanıcı silme trigger fonksiyonu
+CREATE OR REPLACE FUNCTION public.handle_user_delete()
+RETURNS trigger AS $$
+BEGIN
+  -- Burada kullanıcı silinirken yapılması gereken ek işlemler eklenebilir
+  -- Örnek: user'ın diğer tablolardaki kayıtlarını soft delete yapma
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Kullanıcı silme trigger'ı
+CREATE OR REPLACE TRIGGER on_auth_user_deleted
+  BEFORE DELETE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_user_delete();
+
+-- authenticator rolüne şemayı "görme" ve "kullanma" izni ver. Bu, rolün authenticated rolüne geçmesini sağlar.
+GRANT USAGE ON SCHEMA public TO authenticator;
+
+-- Diğer standart rollerin de bu izne sahip olduğundan emin olun.
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+
+-- PostgREST'in (API katmanı) şemayı yeniden okuyup değişiklikleri algılaması için.
+NOTIFY pgrst, 'reload schema';
+
+-- authenticated rolüne public şemasındaki TÜM tablolarda işlem yapma izni ver.
+-- RLS politikalarınız bu genel izni kısıtlayacaktır.
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO authenticated;
+
+-- Bu izinleri gelecekte oluşturulacak tablolar için de varsayılan yap.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO authenticated;
+
+-- Aynı izinleri 'anon' rolü için de yapabilirsiniz (eğer anonim erişim kullanıyorsanız).
+-- Genellikle anonim kullanıcıların sadece SELECT yetkisi olur.
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO anon;
+
